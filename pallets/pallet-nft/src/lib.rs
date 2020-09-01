@@ -53,11 +53,7 @@ use sp_std::{
     vec::Vec,
 };
 
-mod unique_assets;
 use unique_assets::traits::*;
-
-pub mod nft;
-//pub use crate::nft::{UniqueAssets, NFT};
 
 #[cfg(test)]
 mod mock;
@@ -65,7 +61,7 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
-pub trait Trait<I = DefaultInstance>: frame_system::Trait {
+pub trait Trait<I = DefaultInstance>: frame_system::Trait /* Mintable<Self as frame_system::Trait> */ {
     /// The dispatch origin that is able to mint new instances of this type of commodity.
     //type CommodityAdmin: EnsureOrigin<Self::Origin>;
     /// The data type that is used to describe this type of commodity.
@@ -221,7 +217,7 @@ decl_module! {
             let who = ensure_signed(origin)?;
             ensure!(who == Self::account_for_commodity(&commodity_id), Error::<T, I>::NotCommodityOwner);
 
-            <Self as UniqueAssets<_>>::transfer(&dest_account, &commodity_id)?;
+            <Self as Unique>::transfer(&dest_account, &commodity_id)?;
             Self::deposit_event(RawEvent::Transferred(commodity_id.clone(), dest_account.clone()));
             Ok(())
         }
@@ -229,8 +225,10 @@ decl_module! {
 }
 
 impl<T: Trait<I>, I: Instance>
-    UniqueAssets<Commodity<CommodityId<T>, <T as Trait<I>>::CommodityInfo>> for Module<T, I>
+    //Unique<Commodity<CommodityId<T>, <T as Trait<I>>::CommodityInfo>> for Module<T, I>
+    Unique for Module<T, I>
 {
+    type Asset = Commodity<CommodityId<T>, <T as Trait<I>>::CommodityInfo>;
     type AccountId = <T as frame_system::Trait>::AccountId;
     type AssetLimit = T::CommodityLimit;
     type UserAssetLimit = T::UserCommodityLimit;
@@ -294,8 +292,10 @@ impl<T: Trait<I>, I: Instance>
 }
 
 impl<T: Trait<I>, I: Instance>
-    Mintable<Commodity<CommodityId<T>, <T as Trait<I>>::CommodityInfo>> for Module<T, I>
+    //Mintable<Commodity<CommodityId<T>, <T as Trait<I>>::CommodityInfo>> for Module<T, I>
+    Mintable for Module<T, I>
 {
+    type Asset = Commodity<CommodityId<T>, <T as Trait<I>>::CommodityInfo>;
     type AccountId = <T as frame_system::Trait>::AccountId;
 
     fn mint(

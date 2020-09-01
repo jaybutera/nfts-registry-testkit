@@ -4,12 +4,20 @@ description = 'Verifiable Attributes registry'
 edition = '2018'
 homepage = 'https://substrate.dev'
 license = 'Unlicense'
-name = 'pallet-template'
+name = 'pallet-va-registry'
 repository = 'https://github.com/substrate-developer-hub/substrate-node-template/'
 version = '2.0.0-rc6'
 
 [package.metadata.docs.rs]
 targets = ['x86_64-unknown-linux-gnu']
+
+[dependencies.pallet-nft]
+default-features = false
+path = "../pallet-nft"
+
+[dependencies.unique_assets]
+default-features = false
+path = "../../../unique_assets"
 
 [dependencies.codec]
 default-features = false
@@ -26,6 +34,12 @@ version = '2.0.0-rc6'
 [dependencies.frame-system]
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
+tag = 'v2.0.0-rc6'
+version = '2.0.0-rc6'
+
+[dependencies.sp-std]
+git = 'https://github.com/paritytech/substrate.git'
+default-features = false
 tag = 'v2.0.0-rc6'
 version = '2.0.0-rc6'
 

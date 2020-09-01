@@ -4,7 +4,8 @@ panic = 'unwind'
 [workspace]
 members = [
     'node',
+    'pallets/pallet-nft',
     'pallets/template',
-    'pallets/unique-assets',
+    'pallets/pallet-va-registry',
     'runtime',
 ]
