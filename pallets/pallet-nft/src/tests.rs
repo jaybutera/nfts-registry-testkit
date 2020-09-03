@@ -1,7 +1,4 @@
-// Tests to be written here
-
 use crate::mock::*;
-//use crate::nft::UniqueAssets;
 use crate::unique_assets::traits::*;
 use crate::*;
 use frame_support::{assert_err, assert_ok, Hashable};

@@ -1,38 +1,11 @@
 //! # Unique Assets Implementation: Commodities
 //!
-//! This pallet exposes capabilities for managing unique assets, also known as
-//! non-fungible tokens (NFTs).
-//!
-//! - [`pallet_commodities::Trait`](./trait.Trait.html)
-//! - [`Calls`](./enum.Call.html)
-//! - [`Errors`](./enum.Error.html)
-//! - [`Events`](./enum.RawEvent.html)
-//!
-//! ## Overview
-//!
-//! Assets that share a common metadata structure may be created and distributed
-//! by an asset admin. Asset owners may burn assets or transfer their
-//! ownership. Configuration parameters are used to limit the total number of a
-//! type of asset that may exist as well as the number that any one account may
-//! own. Assets are uniquely identified by the hash of the info that defines
-//! them, as calculated by the runtime system's hashing algorithm.
-//!
-//! This pallet implements the [`UniqueAssets`](./nft/trait.UniqueAssets.html)
-//! trait in a way that is optimized for assets that are expected to be traded
-//! frequently.
-//!
-//! ### Dispatchable Functions
-//!
-//! * [`mint`](./enum.Call.html#variant.mint) - Use the provided commodity info
-//!   to create a new commodity for the specified user. May only be called by
-//!   the commodity admin.
-//!
-//! * [`burn`](./enum.Call.html#variant.burn) - Destroy a commodity. May only be
-//!   called by commodity owner.
-//!
-//! * [`transfer`](./enum.Call.html#variant.transfer) - Transfer ownership of
-//!   a commodity to another account. May only be called by current commodity
-//!   owner.
+//! This creates an NFT-like runtime module by implementing the
+//! Unique, Mintable, and Burnable traits of the unique_assets
+//! module. The depended-on unique_assets library provides general
+//! types for constructing unique assets. Other modules in this
+//! runtime can access the interface provided by this module to
+//! define user-facing logic to interact with the runtime NFTs.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -62,8 +35,6 @@ mod mock;
 mod tests;
 
 pub trait Trait<I = DefaultInstance>: frame_system::Trait /* Mintable<Self as frame_system::Trait> */ {
-    /// The dispatch origin that is able to mint new instances of this type of commodity.
-    //type CommodityAdmin: EnsureOrigin<Self::Origin>;
     /// The data type that is used to describe this type of commodity.
     type CommodityInfo: Hashable + Member + Debug + Default + FullCodec;
     /// The maximum number of this type of commodity that may exist (minted - burned).
@@ -125,18 +96,13 @@ decl_storage! {
     }
 }
 
+// Empty event to satisfy type constraints
 decl_event!(
     pub enum Event<T, I = DefaultInstance>
     where
         CommodityId = <T as frame_system::Trait>::Hash,
-        AccountId = <T as frame_system::Trait>::AccountId,
     {
-        /// The commodity has been burned.
-        Burned(CommodityId),
-        /// The commodity has been minted and distributed to the account.
-        Minted(CommodityId, AccountId),
-        /// Ownership of the commodity has been transferred to the account.
-        Transferred(CommodityId, AccountId),
+        Tmp(CommodityId),
     }
 );
 
@@ -157,70 +123,11 @@ decl_error! {
     }
 }
 
+// Empty module so that storage can be declared
 decl_module! {
     pub struct Module<T: Trait<I>, I: Instance = DefaultInstance> for enum Call where origin: T::Origin {
         type Error = Error<T, I>;
         fn deposit_event() = default;
-
-        /// Create a new commodity from the provided commodity info and identify the specified
-        /// account as its owner. The ID of the new commodity will be equal to the hash of the info
-        /// that defines it, as calculated by the runtime system's hashing algorithm.
-        ///
-        /// The dispatch origin for this call must be the commodity admin.
-        ///
-        /// This function will throw an error if it is called with commodity info that describes
-        /// an existing (duplicate) commodity, if the maximum number of this type of commodity already
-        /// exists or if the specified owner already owns the maximum number of this type of
-        /// commodity.
-        ///
-        /// - `owner_account`: Receiver of the commodity.
-        /// - `commodity_info`: The information that defines the commodity.
-        /*
-        #[weight = 10_000]
-        pub fn mint(origin, owner_account: T::AccountId, commodity_info: T::CommodityInfo) -> dispatch::DispatchResult {
-            T::CommodityAdmin::ensure_origin(origin)?;
-
-            let commodity_id = <Self as Mintable<_>>::mint(&owner_account, commodity_info)?;
-            Self::deposit_event(RawEvent::Minted(commodity_id, owner_account.clone()));
-            Ok(())
-        }
-
-        /// Destroy the specified commodity.
-        ///
-        /// The dispatch origin for this call must be the commodity owner.
-        ///
-        /// - `commodity_id`: The hash (calculated by the runtime system's hashing algorithm)
-        ///   of the info that defines the commodity to destroy.
-        #[weight = 10_000]
-        pub fn burn(origin, commodity_id: CommodityId<T>) -> dispatch::DispatchResult {
-            let who = ensure_signed(origin)?;
-            ensure!(who == Self::account_for_commodity(&commodity_id), Error::<T, I>::NotCommodityOwner);
-
-            <Self as Burnable<_>>::burn(&commodity_id)?;
-            Self::deposit_event(RawEvent::Burned(commodity_id.clone()));
-            Ok(())
-        }
-        */
-
-        /// Transfer a commodity to a new owner.
-        ///
-        /// The dispatch origin for this call must be the commodity owner.
-        ///
-        /// This function will throw an error if the new owner already owns the maximum
-        /// number of this type of commodity.
-        ///
-        /// - `dest_account`: Receiver of the commodity.
-        /// - `commodity_id`: The hash (calculated by the runtime system's hashing algorithm)
-        ///   of the info that defines the commodity to destroy.
-        #[weight = 10_000]
-        pub fn transfer(origin, dest_account: T::AccountId, commodity_id: CommodityId<T>) -> dispatch::DispatchResult {
-            let who = ensure_signed(origin)?;
-            ensure!(who == Self::account_for_commodity(&commodity_id), Error::<T, I>::NotCommodityOwner);
-
-            <Self as Unique>::transfer(&dest_account, &commodity_id)?;
-            Self::deposit_event(RawEvent::Transferred(commodity_id.clone(), dest_account.clone()));
-            Ok(())
-        }
     }
 }
 
