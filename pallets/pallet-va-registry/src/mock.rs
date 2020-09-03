@@ -56,7 +56,7 @@ parameter_types! {
 
 impl pallet_nft::Trait for Test {
     type Event = ();
-    type CommodityInfo = u32;
+    type CommodityInfo = Vec<u8>;
     type CommodityLimit = MaxCommodities;
     type UserCommodityLimit = MaxCommoditiesPerUser;
 }
