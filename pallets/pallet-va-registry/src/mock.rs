@@ -49,11 +49,24 @@ impl system::Trait for Test {
     type SystemWeightInfo = ();
 }
 
+parameter_types! {
+    pub const MaxCommodities: u128 = 5;
+    pub const MaxCommoditiesPerUser: u64 = 2;
+}
+
+impl pallet_nft::Trait for Test {
+    type Event = ();
+    type CommodityInfo = u32;
+    type CommodityLimit = MaxCommodities;
+    type UserCommodityLimit = MaxCommoditiesPerUser;
+}
+
 impl Trait for Test {
     type Event = ();
 }
 
-pub type TemplateModule = Module<Test>;
+// System Under Test
+pub type SUT = Module<Test>;
 
 // Build genesis storage according to the mock runtime.
 pub fn new_test_ext() -> sp_io::TestExternalities {

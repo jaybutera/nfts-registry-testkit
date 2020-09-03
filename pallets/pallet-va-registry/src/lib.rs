@@ -3,7 +3,11 @@
 use frame_support::{decl_module, decl_storage, decl_event, decl_error, dispatch, traits::Get};
 use frame_system::ensure_signed;
 use sp_std::vec::Vec;
-use unique_assets::traits::{Mintable};
+use unique_assets::traits::{Unique, Nft, Mintable};
+use proofs::Proof;
+
+// TODO: tmp until integrated w/ cent chain
+mod proofs;
 
 #[cfg(test)]
 mod mock;
@@ -40,8 +44,13 @@ decl_storage! {
 }
 
 decl_event!(
-    pub enum Event<T> where AccountId = <T as frame_system::Trait>::AccountId {
-        Tmp(AccountId),
+    pub enum Event<T>
+    where
+        // TODO: Is it possible to get the Id directly from the Module like this?
+        //CommodityId = <<pallet_nft::Module<T> as Unique>::Asset as Nft>::Id,
+        CommodityId = <T as frame_system::Trait>::Hash,
+    {
+        Mint(CommodityId),
     }
 );
 
@@ -57,11 +66,17 @@ decl_module! {
         fn deposit_event() = default;
 
         #[weight = 10_000]
+        pub fn tmp_set_anchor(origin, anchor_id: T::Hash, anchor: T::Hash
+        ) -> dispatch::DispatchResult {
+            Ok(<Anchor<T>>::insert(anchor_id, anchor))
+        }
+
+        #[weight = 10_000]
         pub fn mint(origin,
                     owner_account: <T as frame_system::Trait>::AccountId,
                     commodity_info: T::CommodityInfo,
                     anchor_id: T::Hash,
-                    proofs: Vec<u8>,
+                    proofs: Vec<Proof>,
         ) -> dispatch::DispatchResult {
             ensure_signed(origin)?;
 
@@ -69,9 +84,13 @@ decl_module! {
             // Verify proofs
 
             // Get the doc root
+            // TODO: Use this line instead, once integrated with cent chain
+            // let anchor_data = <anchor::Module<T>>::get_anchor_by_id(anchor_id).ok_or("Anchor doesn't exist")?;
+            /*** Tmp replacement for tests: ***/
             let doc_root = Self::get_document_root(anchor_id)?;
 
             // Verify the proof against document root
+            // TODO: Once integrated w/ cent chain
             //Self::validate_proofs(&doc_root, &proofs, &static_proofs)?;
 
 
@@ -79,12 +98,10 @@ decl_module! {
             // Minting
 
             // Internal nft mint
-            <pallet_nft::Module<T>>::mint(&owner_account, commodity_info)?;
-            //<Self as Nft<_>>::mint(&owner_account, commodity_info)
-            //    .dispatch(system::RawOrigin::Root.into())?;
+            let commodity_id = <pallet_nft::Module<T>>::mint(&owner_account, commodity_info)?;
 
             // Mint event
-            // Self::deposit_event(RawEvent::Mint(..));
+            Self::deposit_event(RawEvent::Mint(commodity_id));
 
             Ok(())
         }
