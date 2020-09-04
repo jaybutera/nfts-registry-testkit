@@ -1,10 +1,14 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use frame_support::{decl_module, decl_storage, decl_event, decl_error, dispatch, traits::Get};
+use frame_support::{
+    decl_module, decl_storage, decl_event, decl_error,
+    dispatch, traits::Get};
 use frame_system::ensure_signed;
-use sp_std::vec::Vec;
+use sp_std::{vec::Vec, cmp::Eq};
 use unique_assets::traits::{Unique, Nft, Mintable};
+use codec::{Decode, Encode};
 use proofs::Proof;
+
 
 // TODO: tmp until integrated w/ cent chain
 mod proofs;
@@ -15,20 +19,40 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
-trait VerifierRegistry {
+// Registries are identified using a nonce in storage
+type RegistryId = u128;
+
+// Metadata for a registry instance
+#[derive(Encode, Decode, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub struct RegistryInfo {
+    owner_can_burn: bool,
+}
+
+// Info needed to provide proofs to mint
+#[derive(Encode, Decode, Clone, PartialEq, Default)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub struct MintInfo<Hash> {
+    anchor_id: Hash,
+    proofs: Vec<Proof>,
+}
+
+pub trait VerifierRegistry {
+    type AccountId;
     type RegistryId;
     type RegistryInfo;
     type AssetId;
     type AssetInfo;
     type MintInfo;
 
-    fn createRegistry(info: &Self::RegistryInfo) -> Self::RegistryId;
+    fn create_registry(info: &Self::RegistryInfo) -> Result<Self::RegistryId, dispatch::DispatchError>;
 
     /// Use the mint info to verify whether the mint is a valid action.
     /// If so, use the asset info to mint an asset.
-    fn mint(asset_info: &Self::AssetInfo,
-            mint_info:  &Self::MintInfo,
-    ) -> Result<Self::AssetId, ()>;
+    fn mint(owner_account: Self::AccountId,
+            asset_info: Self::AssetInfo,
+            mint_info: Self::MintInfo,
+    ) -> Result<Self::AssetId, dispatch::DispatchError>;
 }
 
 
@@ -38,8 +62,12 @@ pub trait Trait: frame_system::Trait + pallet_nft::Trait {
 
 decl_storage! {
     trait Store for Module<T: Trait> as TemplateModule {
-        /// This is a dummy store for testing verification in template node
+        /// This is a dummy store for testing verification in template node.
         Anchor get(fn get_anchor_by_id): map hasher(identity) T::Hash => Option<T::Hash>;
+        /// Nonce for generating new registry ids.
+        RegistryNonce: RegistryId;
+        /// A mapping of all created registries and their metadata.
+        Registries: map hasher(blake2_128_concat) RegistryId => RegistryInfo;
     }
 }
 
@@ -72,33 +100,31 @@ decl_module! {
         }
 
         #[weight = 10_000]
-        pub fn mint(origin,
-                    owner_account: <T as frame_system::Trait>::AccountId,
-                    commodity_info: T::CommodityInfo,
-                    anchor_id: T::Hash,
-                    proofs: Vec<Proof>,
+        pub fn create_registry(origin,
+                            info: RegistryInfo,
         ) -> dispatch::DispatchResult {
             ensure_signed(origin)?;
 
-            // -------------
-            // Verify proofs
+            let registry_id = <Self as VerifierRegistry>::create_registry(&info)?;
 
-            // Get the doc root
-            // TODO: Use this line instead, once integrated with cent chain
-            // let anchor_data = <anchor::Module<T>>::get_anchor_by_id(anchor_id).ok_or("Anchor doesn't exist")?;
-            /*** Tmp replacement for tests: ***/
-            let doc_root = Self::get_document_root(anchor_id)?;
+            // Emit event
+            // ...
 
-            // Verify the proof against document root
-            // TODO: Once integrated w/ cent chain
-            //Self::validate_proofs(&doc_root, &proofs, &static_proofs)?;
+            Ok(())
+        }
 
+        #[weight = 10_000]
+        pub fn mint(origin,
+                    owner_account: <T as frame_system::Trait>::AccountId,
+                    commodity_info: T::CommodityInfo,
+                    mint_info: MintInfo<<T as frame_system::Trait>::Hash>,
+        ) -> dispatch::DispatchResult {
+            ensure_signed(origin)?;
 
-            // -------
-            // Minting
-
-            // Internal nft mint
-            let commodity_id = <pallet_nft::Module<T>>::mint(&owner_account, commodity_info)?;
+            // Internal mint validates proofs and modifies state or returns error
+            let commodity_id = <Self as VerifierRegistry>::mint(owner_account,
+                                                                commodity_info,
+                                                                mint_info)?;
 
             // Mint event
             Self::deposit_event(RawEvent::Mint(commodity_id));
@@ -116,5 +142,67 @@ impl<T: Trait> Module<T> {
             Some(anchor_data) => Ok(anchor_data),
             None => Err(Error::<T>::DocumentNotAnchored.into()),
         }
+    }
+
+    fn create_new_registry_id() -> Result<RegistryId, dispatch::DispatchError> {
+        let id = <RegistryNonce>::get();
+
+        // Check for overflow on index
+        let nplus1 = <RegistryNonce>::get().checked_add(1)
+            .ok_or("Overflow when updating registry nonce.")?;
+
+        // Update the nonce
+        <RegistryNonce>::put( nplus1 );
+
+        Ok(id)
+    }
+}
+
+impl<T: Trait> VerifierRegistry for Module<T> {
+    type AccountId    = <T as frame_system::Trait>::AccountId;
+    type RegistryId   = RegistryId;
+    type RegistryInfo = RegistryInfo;
+    type AssetId   = <T as frame_system::Trait>::Hash;
+    type AssetInfo = <T as pallet_nft::Trait>::CommodityInfo;
+    type MintInfo  = MintInfo<<T as frame_system::Trait>::Hash>;
+
+    // TODO: Put into VerifierRegistry trait impl
+    // Registries with identical RegistryInfo may exist
+    fn create_registry(info: &Self::RegistryInfo) -> Result<Self::RegistryId, dispatch::DispatchError> {
+        // Generate registry id as nonce
+        let id = Self::create_new_registry_id()?;
+
+        // Insert registry in storage
+        Registries::insert(id.clone(), info);
+
+        Ok(id)
+    }
+
+    fn mint(owner_account: <T as frame_system::Trait>::AccountId,
+            commodity_info: T::CommodityInfo,
+            mint_info: MintInfo<<T as frame_system::Trait>::Hash>,
+    ) -> Result<Self::AssetId, dispatch::DispatchError> {
+
+        // -------------
+        // Verify proofs
+
+        // Get the doc root
+        // TODO: Use this line instead, once integrated with cent chain
+        // let anchor_data = <anchor::Module<T>>::get_anchor_by_id(anchor_id).ok_or("Anchor doesn't exist")?;
+        /*** Tmp replacement for tests: ***/
+        let doc_root = Self::get_document_root(mint_info.anchor_id)?;
+
+        // Verify the proof against document root
+        // TODO: Once integrated w/ cent chain
+        //Self::validate_proofs(&doc_root, &proofs, &static_proofs)?;
+
+
+        // -------
+        // Minting
+
+        // Internal nft mint
+        let commodity_id = <pallet_nft::Module<T>>::mint(&owner_account, commodity_info)?;
+
+        Ok(commodity_id)
     }
 }

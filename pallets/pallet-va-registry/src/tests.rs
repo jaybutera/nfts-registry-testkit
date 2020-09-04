@@ -5,9 +5,9 @@ use frame_support::{assert_ok, Hashable};
 use sp_runtime::{
     testing::Header,
     traits::{BadOrigin, BlakeTwo256, Hash, IdentityLookup, Block as BlockT},
-    Perbill,
 };
 use sp_core::hashing::blake2_128;
+use super::*;
 
 
 fn get_valid_proof() -> (Proof, sp_core::H256, [H256; 3]) {
@@ -91,8 +91,10 @@ fn mint_with_valid_proofs_works() {
             SUT::mint(origin,
                       owner,
                       nft_data,
-                      anchor_id,
-                      vec![pf]));
+                      MintInfo {
+                          anchor_id: anchor_id,
+                          proofs: vec![pf],
+                      }));
 
         // Nft registered to owner
         assert_eq!(
