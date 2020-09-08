@@ -22,6 +22,9 @@ mod tests;
 // Registries are identified using a nonce in storage
 type RegistryId = u128;
 
+// TODO: Get this from pallet_nft
+type AssetId<T> = <T as frame_system::Trait>::Hash;
+
 // Metadata for a registry instance
 #[derive(Encode, Decode, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "std", derive(Debug))]
@@ -50,6 +53,7 @@ pub trait VerifierRegistry {
     /// Use the mint info to verify whether the mint is a valid action.
     /// If so, use the asset info to mint an asset.
     fn mint(owner_account: Self::AccountId,
+            registry_id: RegistryId,
             asset_info: Self::AssetInfo,
             mint_info: Self::MintInfo,
     ) -> Result<Self::AssetId, dispatch::DispatchError>;
@@ -61,13 +65,16 @@ pub trait Trait: frame_system::Trait + pallet_nft::Trait {
 }
 
 decl_storage! {
-    trait Store for Module<T: Trait> as TemplateModule {
+    trait Store for Module<T: Trait> as VARegistry {
         /// This is a dummy store for testing verification in template node.
         Anchor get(fn get_anchor_by_id): map hasher(identity) T::Hash => Option<T::Hash>;
         /// Nonce for generating new registry ids.
         RegistryNonce: RegistryId;
         /// A mapping of all created registries and their metadata.
         Registries: map hasher(blake2_128_concat) RegistryId => RegistryInfo;
+        /// A list of asset ids for each registry.
+        // TODO: Try a map of BTreeSets as well, and do a benchmark comparison
+        NftLists: double_map hasher(identity) RegistryId, hasher(identity) AssetId<T> => bool;
     }
 }
 
@@ -101,7 +108,7 @@ decl_module! {
 
         #[weight = 10_000]
         pub fn create_registry(origin,
-                            info: RegistryInfo,
+                               info: RegistryInfo,
         ) -> dispatch::DispatchResult {
             ensure_signed(origin)?;
 
@@ -115,6 +122,7 @@ decl_module! {
 
         #[weight = 10_000]
         pub fn mint(origin,
+                    registry_id: RegistryId,
                     owner_account: <T as frame_system::Trait>::AccountId,
                     commodity_info: T::CommodityInfo,
                     mint_info: MintInfo<<T as frame_system::Trait>::Hash>,
@@ -123,6 +131,7 @@ decl_module! {
 
             // Internal mint validates proofs and modifies state or returns error
             let commodity_id = <Self as VerifierRegistry>::mint(owner_account,
+                                                                registry_id,
                                                                 commodity_info,
                                                                 mint_info)?;
 
@@ -162,7 +171,7 @@ impl<T: Trait> VerifierRegistry for Module<T> {
     type AccountId    = <T as frame_system::Trait>::AccountId;
     type RegistryId   = RegistryId;
     type RegistryInfo = RegistryInfo;
-    type AssetId   = <T as frame_system::Trait>::Hash;
+    type AssetId   = AssetId<T>;//<T as frame_system::Trait>::Hash;
     type AssetInfo = <T as pallet_nft::Trait>::CommodityInfo;
     type MintInfo  = MintInfo<<T as frame_system::Trait>::Hash>;
 
@@ -179,6 +188,7 @@ impl<T: Trait> VerifierRegistry for Module<T> {
     }
 
     fn mint(owner_account: <T as frame_system::Trait>::AccountId,
+            registry_id: RegistryId,
             commodity_info: T::CommodityInfo,
             mint_info: MintInfo<<T as frame_system::Trait>::Hash>,
     ) -> Result<Self::AssetId, dispatch::DispatchError> {
@@ -202,6 +212,9 @@ impl<T: Trait> VerifierRegistry for Module<T> {
 
         // Internal nft mint
         let commodity_id = <pallet_nft::Module<T>>::mint(&owner_account, commodity_info)?;
+
+        // Reference in registry storage
+        NftLists::<T>::insert(registry_id, commodity_id, true);
 
         Ok(commodity_id)
     }

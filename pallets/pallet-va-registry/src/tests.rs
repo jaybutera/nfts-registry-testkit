@@ -78,6 +78,7 @@ fn mint_with_valid_proofs_works() {
         let anchor_id = (pre_image).using_encoded(<Test as frame_system::Trait>::Hashing::hash);
         let origin = Origin::signed(1);
         let owner  = 1;
+        let registry_id = 0;
 
         // Start with not Nfts
         assert_eq!(<pallet_nft::Module<Test>>::total(), 0);
@@ -89,6 +90,7 @@ fn mint_with_valid_proofs_works() {
         // Mint token with document proof
         assert_ok!(
             SUT::mint(origin,
+                      registry_id,
                       owner,
                       nft_data,
                       MintInfo {
@@ -105,5 +107,12 @@ fn mint_with_valid_proofs_works() {
         // Total Nfts did increase
         assert_eq!(<pallet_nft::Module<Test>>::total(), 1);
         assert_eq!(<pallet_nft::Module<Test>>::total_for_account(owner), 1);
+    });
+}
+
+#[test]
+fn create_registry_works() {
+    new_test_ext().execute_with(|| {
+        let origin = Origin::signed(1);
     });
 }
