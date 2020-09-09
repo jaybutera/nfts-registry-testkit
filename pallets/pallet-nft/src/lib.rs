@@ -34,9 +34,15 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+// TODO: Tmp placed here
+pub type RegistryId = u128;
+pub trait InRegistry {
+    fn registry_id(&self) -> RegistryId;
+}
+
 pub trait Trait<I = DefaultInstance>: frame_system::Trait /* Mintable<Self as frame_system::Trait> */ {
     /// The data type that is used to describe this type of commodity.
-    type CommodityInfo: Hashable + Member + Debug + Default + FullCodec;
+    type CommodityInfo: Hashable + Member + Debug + Default + FullCodec + InRegistry;
     /// The maximum number of this type of commodity that may exist (minted - burned).
     type CommodityLimit: Get<u128>;
     /// The maximum number of this type of commodity that any single account may own.

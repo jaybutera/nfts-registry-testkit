@@ -2,9 +2,10 @@
 
 use frame_support::{
     decl_module, decl_storage, decl_event, decl_error,
-    dispatch, traits::Get};
+    ensure, dispatch, traits::Get};
 use frame_system::ensure_signed;
 use sp_std::{vec::Vec, cmp::Eq};
+use pallet_nft::InRegistry;
 use unique_assets::traits::{Unique, Nft, Mintable};
 use codec::{Decode, Encode};
 use proofs::Proof;
@@ -32,6 +33,18 @@ pub struct RegistryInfo {
     owner_can_burn: bool,
 }
 
+#[derive(Encode, Decode, Clone, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub struct AssetInfo {
+    registry_id: RegistryId,
+}
+
+impl InRegistry for AssetInfo {
+    fn registry_id(&self) -> RegistryId {
+        self.registry_id
+    }
+}
+
 // Info needed to provide proofs to mint
 #[derive(Encode, Decode, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "std", derive(Debug))]
@@ -45,7 +58,8 @@ pub trait VerifierRegistry {
     type RegistryId;
     type RegistryInfo;
     type AssetId;
-    type AssetInfo;
+    // Asset info must contain its associated registry id
+    type AssetInfo: InRegistry;
     type MintInfo;
 
     fn create_registry(info: &Self::RegistryInfo) -> Result<Self::RegistryId, dispatch::DispatchError>;
@@ -53,7 +67,6 @@ pub trait VerifierRegistry {
     /// Use the mint info to verify whether the mint is a valid action.
     /// If so, use the asset info to mint an asset.
     fn mint(owner_account: Self::AccountId,
-            registry_id: RegistryId,
             asset_info: Self::AssetInfo,
             mint_info: Self::MintInfo,
     ) -> Result<Self::AssetId, dispatch::DispatchError>;
@@ -74,7 +87,7 @@ decl_storage! {
         Registries: map hasher(blake2_128_concat) RegistryId => RegistryInfo;
         /// A list of asset ids for each registry.
         // TODO: Try a map of BTreeSets as well, and do a benchmark comparison
-        NftLists: double_map hasher(identity) RegistryId, hasher(identity) AssetId<T> => bool;
+        NftLists: double_map hasher(identity) RegistryId, hasher(identity) AssetId<T> => ();
     }
 }
 
@@ -92,6 +105,7 @@ decl_event!(
 decl_error! {
     pub enum Error for Module<T: Trait> {
         DocumentNotAnchored,
+        RegistryDoesNotExist,
     }
 }
 
@@ -122,7 +136,6 @@ decl_module! {
 
         #[weight = 10_000]
         pub fn mint(origin,
-                    registry_id: RegistryId,
                     owner_account: <T as frame_system::Trait>::AccountId,
                     commodity_info: T::CommodityInfo,
                     mint_info: MintInfo<<T as frame_system::Trait>::Hash>,
@@ -131,7 +144,6 @@ decl_module! {
 
             // Internal mint validates proofs and modifies state or returns error
             let commodity_id = <Self as VerifierRegistry>::mint(owner_account,
-                                                                registry_id,
                                                                 commodity_info,
                                                                 mint_info)?;
 
@@ -171,11 +183,11 @@ impl<T: Trait> VerifierRegistry for Module<T> {
     type AccountId    = <T as frame_system::Trait>::AccountId;
     type RegistryId   = RegistryId;
     type RegistryInfo = RegistryInfo;
+    // TODO: Can these types be connected to pallet::nft?
     type AssetId   = AssetId<T>;//<T as frame_system::Trait>::Hash;
     type AssetInfo = <T as pallet_nft::Trait>::CommodityInfo;
     type MintInfo  = MintInfo<<T as frame_system::Trait>::Hash>;
 
-    // TODO: Put into VerifierRegistry trait impl
     // Registries with identical RegistryInfo may exist
     fn create_registry(info: &Self::RegistryInfo) -> Result<Self::RegistryId, dispatch::DispatchError> {
         // Generate registry id as nonce
@@ -188,10 +200,15 @@ impl<T: Trait> VerifierRegistry for Module<T> {
     }
 
     fn mint(owner_account: <T as frame_system::Trait>::AccountId,
-            registry_id: RegistryId,
             commodity_info: T::CommodityInfo,
             mint_info: MintInfo<<T as frame_system::Trait>::Hash>,
     ) -> Result<Self::AssetId, dispatch::DispatchError> {
+        // Check that given registry exists
+        let registry_id = commodity_info.registry_id();
+        ensure!(
+            Registries::contains_key(registry_id),
+            Error::<T>::RegistryDoesNotExist
+        );
 
         // -------------
         // Verify proofs
@@ -213,8 +230,8 @@ impl<T: Trait> VerifierRegistry for Module<T> {
         // Internal nft mint
         let commodity_id = <pallet_nft::Module<T>>::mint(&owner_account, commodity_info)?;
 
-        // Reference in registry storage
-        NftLists::<T>::insert(registry_id, commodity_id, true);
+        // Place asset id in registry map
+        NftLists::<T>::insert(registry_id, commodity_id, ());
 
         Ok(commodity_id)
     }

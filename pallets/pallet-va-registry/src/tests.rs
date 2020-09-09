@@ -72,13 +72,23 @@ fn get_valid_proof() -> (Proof, sp_core::H256, [H256; 3]) {
 #[test]
 fn mint_with_valid_proofs_works() {
     new_test_ext().execute_with(|| {
-        let nft_data = Vec::<u8>::default();
+        let registry_id = 0;
+        let nft_data = AssetInfo {
+            registry_id,
+        };
         let (pf, doc_root, static_proofs) = get_valid_proof();
         let pre_image = <Test as frame_system::Trait>::Hashing::hash_of(&0);
         let anchor_id = (pre_image).using_encoded(<Test as frame_system::Trait>::Hashing::hash);
         let origin = Origin::signed(1);
         let owner  = 1;
-        let registry_id = 0;
+
+        // Create registry
+        let registry_info = RegistryInfo {
+            owner_can_burn: false,
+        };
+        assert_ok!(
+            SUT::create_registry(origin.clone(), registry_info)
+        );
 
         // Start with not Nfts
         assert_eq!(<pallet_nft::Module<Test>>::total(), 0);
@@ -90,9 +100,8 @@ fn mint_with_valid_proofs_works() {
         // Mint token with document proof
         assert_ok!(
             SUT::mint(origin,
-                      registry_id,
                       owner,
-                      nft_data,
+                      nft_data.clone(),
                       MintInfo {
                           anchor_id: anchor_id,
                           proofs: vec![pf],
@@ -100,7 +109,7 @@ fn mint_with_valid_proofs_works() {
 
         // Nft registered to owner
         assert_eq!(
-            <pallet_nft::Module<Test>>::account_for_commodity::<H256>(Vec::<u8>::default().blake2_256().into()),
+            <pallet_nft::Module<Test>>::account_for_commodity::<H256>(<Test as frame_system::Trait>::Hashing::hash_of(&nft_data)),
             owner
         );
 
