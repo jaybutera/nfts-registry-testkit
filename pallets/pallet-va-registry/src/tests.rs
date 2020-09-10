@@ -68,31 +68,34 @@ fn get_valid_proof() -> (Proof, sp_core::H256, [H256; 3]) {
 }
 
 
-
 #[test]
 fn mint_with_valid_proofs_works() {
     new_test_ext().execute_with(|| {
+        let owner     = 1;
+        let origin    = Origin::signed(1);
+        let (pf, doc_root, static_proofs) = get_valid_proof();
+        let pre_image = <Test as frame_system::Trait>::Hashing::hash_of(&0);
+        let anchor_id = (pre_image).using_encoded(<Test as frame_system::Trait>::Hashing::hash);
+        let fields = vec![vec![0], vec![1]];
+        let values = vec![vec![2], vec![3]];
+
         let registry_id = 0;
         let nft_data = AssetInfo {
             registry_id,
         };
-        let (pf, doc_root, static_proofs) = get_valid_proof();
-        let pre_image = <Test as frame_system::Trait>::Hashing::hash_of(&0);
-        let anchor_id = (pre_image).using_encoded(<Test as frame_system::Trait>::Hashing::hash);
-        let origin = Origin::signed(1);
-        let owner  = 1;
-
-        // Create registry
         let registry_info = RegistryInfo {
             owner_can_burn: false,
+            fields: fields,
         };
+
+        // Starts with no Nfts
+        assert_eq!(<pallet_nft::Module<Test>>::total(), 0);
+        assert_eq!(<pallet_nft::Module<Test>>::total_for_account(owner), 0);
+
+        // Create registry
         assert_ok!(
             SUT::create_registry(origin.clone(), registry_info)
         );
-
-        // Start with not Nfts
-        assert_eq!(<pallet_nft::Module<Test>>::total(), 0);
-        assert_eq!(<pallet_nft::Module<Test>>::total_for_account(owner), 0);
 
         // Place document anchor into storage for verification
         assert_ok!(SUT::tmp_set_anchor(origin.clone(), anchor_id, doc_root));
@@ -105,6 +108,7 @@ fn mint_with_valid_proofs_works() {
                       MintInfo {
                           anchor_id: anchor_id,
                           proofs: vec![pf],
+                          values: values,
                       }));
 
         // Nft registered to owner

@@ -138,7 +138,6 @@ decl_module! {
 }
 
 impl<T: Trait<I>, I: Instance>
-    //Unique<Commodity<CommodityId<T>, <T as Trait<I>>::CommodityInfo>> for Module<T, I>
     Unique for Module<T, I>
 {
     type Asset = Commodity<CommodityId<T>, <T as Trait<I>>::CommodityInfo>;
@@ -205,7 +204,6 @@ impl<T: Trait<I>, I: Instance>
 }
 
 impl<T: Trait<I>, I: Instance>
-    //Mintable<Commodity<CommodityId<T>, <T as Trait<I>>::CommodityInfo>> for Module<T, I>
     Mintable for Module<T, I>
 {
     type Asset = Commodity<CommodityId<T>, <T as Trait<I>>::CommodityInfo>;

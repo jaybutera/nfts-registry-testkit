@@ -2,14 +2,24 @@
 
 use frame_support::{
     decl_module, decl_storage, decl_event, decl_error,
-    ensure, dispatch, traits::Get};
+    ensure, dispatch};
 use frame_system::ensure_signed;
 use sp_std::{vec::Vec, cmp::Eq};
 use pallet_nft::InRegistry;
 use unique_assets::traits::{Unique, Nft, Mintable};
-use codec::{Decode, Encode};
-use proofs::Proof;
+use types::{*, VerifierRegistry};
+use sp_runtime::traits::Hash;
 
+// TODO:
+//- Fix unit tests for pallet_nft
+//- Write tests for transfer and burn dispatchables in va-registry
+//- Integrate bridge pallet
+//- Review spec, compare with implementation
+//- Figure abstractions for nft macro
+//- Consider weights for mint, burn, and transfer
+
+// Types for this module
+mod types;
 
 // TODO: tmp until integrated w/ cent chain
 mod proofs;
@@ -19,58 +29,6 @@ mod mock;
 
 #[cfg(test)]
 mod tests;
-
-// Registries are identified using a nonce in storage
-type RegistryId = u128;
-
-// TODO: Get this from pallet_nft
-type AssetId<T> = <T as frame_system::Trait>::Hash;
-
-// Metadata for a registry instance
-#[derive(Encode, Decode, Clone, PartialEq, Default)]
-#[cfg_attr(feature = "std", derive(Debug))]
-pub struct RegistryInfo {
-    owner_can_burn: bool,
-}
-
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Default)]
-#[cfg_attr(feature = "std", derive(Debug))]
-pub struct AssetInfo {
-    registry_id: RegistryId,
-}
-
-impl InRegistry for AssetInfo {
-    fn registry_id(&self) -> RegistryId {
-        self.registry_id
-    }
-}
-
-// Info needed to provide proofs to mint
-#[derive(Encode, Decode, Clone, PartialEq, Default)]
-#[cfg_attr(feature = "std", derive(Debug))]
-pub struct MintInfo<Hash> {
-    anchor_id: Hash,
-    proofs: Vec<Proof>,
-}
-
-pub trait VerifierRegistry {
-    type AccountId;
-    type RegistryId;
-    type RegistryInfo;
-    type AssetId;
-    // Asset info must contain its associated registry id
-    type AssetInfo: InRegistry;
-    type MintInfo;
-
-    fn create_registry(info: &Self::RegistryInfo) -> Result<Self::RegistryId, dispatch::DispatchError>;
-
-    /// Use the mint info to verify whether the mint is a valid action.
-    /// If so, use the asset info to mint an asset.
-    fn mint(owner_account: Self::AccountId,
-            asset_info: Self::AssetInfo,
-            mint_info: Self::MintInfo,
-    ) -> Result<Self::AssetId, dispatch::DispatchError>;
-}
 
 
 pub trait Trait: frame_system::Trait + pallet_nft::Trait {
@@ -94,9 +52,7 @@ decl_storage! {
 decl_event!(
     pub enum Event<T>
     where
-        // TODO: Is it possible to get the Id directly from the Module like this?
-        //CommodityId = <<pallet_nft::Module<T> as Unique>::Asset as Nft>::Id,
-        CommodityId = <T as frame_system::Trait>::Hash,
+        CommodityId = AssetId<T>,
     {
         Mint(CommodityId),
     }
@@ -106,6 +62,9 @@ decl_error! {
     pub enum Error for Module<T: Trait> {
         DocumentNotAnchored,
         RegistryDoesNotExist,
+        /// The values vector provided to a mint call don't match the length of the registry's
+        /// fields vector.
+        InvalidMintingValues,
     }
 }
 
@@ -155,6 +114,7 @@ decl_module! {
     }
 }
 
+// Auxillary methods of the module for internal use
 impl<T: Trait> Module<T> {
     fn get_document_root(anchor_id: T::Hash) -> Result<T::Hash, dispatch::DispatchError> {
         //match <anchor::Module<T>>::get_anchor_by_id(*anchor_id) {
@@ -177,16 +137,24 @@ impl<T: Trait> Module<T> {
 
         Ok(id)
     }
+
+    /// Generates a hash of the concatenated inputs, consuming inputs in the process.
+    fn leaf_hash(mut field: bytes, mut value: bytes/*, salt: u32*/) -> T::Hash {
+        // Generate leaf hash from field ++ value
+        let leaf_data = field.extend(value);
+        <T as frame_system::Trait>::Hashing::hash_of(&leaf_data)
+    }
 }
 
+// Implement the verifier registry. This module verifies data fields that are custom defined
+// by a registry and provided in the MintInfo during a mint invocation.
 impl<T: Trait> VerifierRegistry for Module<T> {
     type AccountId    = <T as frame_system::Trait>::AccountId;
     type RegistryId   = RegistryId;
     type RegistryInfo = RegistryInfo;
-    // TODO: Can these types be connected to pallet::nft?
-    type AssetId   = AssetId<T>;//<T as frame_system::Trait>::Hash;
-    type AssetInfo = <T as pallet_nft::Trait>::CommodityInfo;
-    type MintInfo  = MintInfo<<T as frame_system::Trait>::Hash>;
+    type AssetId      = AssetId<T>;
+    type AssetInfo    = <T as pallet_nft::Trait>::CommodityInfo;
+    type MintInfo     = MintInfo<<T as frame_system::Trait>::Hash>;
 
     // Registries with identical RegistryInfo may exist
     fn create_registry(info: &Self::RegistryInfo) -> Result<Self::RegistryId, dispatch::DispatchError> {
@@ -203,11 +171,22 @@ impl<T: Trait> VerifierRegistry for Module<T> {
             commodity_info: T::CommodityInfo,
             mint_info: MintInfo<<T as frame_system::Trait>::Hash>,
     ) -> Result<Self::AssetId, dispatch::DispatchError> {
-        // Check that given registry exists
         let registry_id = commodity_info.registry_id();
+        let registry_info = Registries::get(registry_id);
+
+        // Check that the registry exists
         ensure!(
+            // TODO: Use the decl above
             Registries::contains_key(registry_id),
             Error::<T>::RegistryDoesNotExist
+        );
+
+        let fields = registry_info.fields;
+        let values = mint_info.values;
+        // The number of values passed in should match the number of fields for the registry
+        ensure!(
+            fields.len() == values.len(),
+            Error::<T>::InvalidMintingValues
         );
 
         // -------------
@@ -222,6 +201,12 @@ impl<T: Trait> VerifierRegistry for Module<T> {
         // Verify the proof against document root
         // TODO: Once integrated w/ cent chain
         //Self::validate_proofs(&doc_root, &proofs, &static_proofs)?;
+
+        // Generate leaf hashes of each value for proof
+        let leaves = fields.into_iter()
+            .zip(values)
+            .map(|(field, val)|
+                Self::leaf_hash(field, val));
 
 
         // -------
