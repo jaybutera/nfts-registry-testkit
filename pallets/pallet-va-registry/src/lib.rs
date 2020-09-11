@@ -1,3 +1,21 @@
+//! This substrate pallet defines a Verifiable Attributes Registry
+//! for minting and managing non-fungible tokens (NFT). A registry
+//! can be treated like a class of NFTs, where each class can define
+//! unique minting and burning logic upon creation at runtime.
+//!
+//! There are many ways to define a registry, and this pallet abstracts
+//! the notion of a registry into a trait called [VerifierRegistry].
+//!
+//! In particular, upon creation the VA Registry is supplied with a list
+//! of data field names from the fields attribute of the [RegistryInfo]
+//! struct. Values for the fields are provided upon each call to
+//! [mint](struct.Module.html#method.mint) a new NFT. As can be seen in
+//! the values field of the [MintoInfo] struct. MintInfo also takes a
+//! list of proofs and an anchor id. The mint method will hash the
+//! values into leaves of a merkle tree and aggregate with the proofs
+//! to generate the root. When the root hash matches that of the anchor,
+//! a mint can be verified.
+
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use frame_support::{
@@ -7,7 +25,7 @@ use frame_system::ensure_signed;
 use sp_std::{vec::Vec, cmp::Eq};
 use pallet_nft::InRegistry;
 use unique_assets::traits::{Unique, Nft, Mintable};
-use types::{*, VerifierRegistry};
+pub use types::{*, VerifierRegistry};
 use sp_runtime::traits::Hash;
 
 // TODO:
@@ -54,16 +72,22 @@ decl_event!(
     where
         CommodityId = AssetId<T>,
     {
+        /// Successful mint of an NFT from fn [`mint`](struct.Module.html#method.mint)
         Mint(CommodityId),
+        /// Successful creation of a registry from fn
+        /// [`create_registry`](./struct.Module.html#method.create_registry)
+        RegistryCreated(RegistryId),
     }
 );
 
 decl_error! {
     pub enum Error for Module<T: Trait> {
+        /// TODO: Tmp until using anchor pallet
         DocumentNotAnchored,
+        /// A specified registry is not in the module storage Registries map.
         RegistryDoesNotExist,
-        /// The values vector provided to a mint call don't match the length of the registry's
-        /// fields vector.
+        /// The values vector provided to a mint call doesn't match the length of the specified
+        /// registry's fields vector.
         InvalidMintingValues,
     }
 }
@@ -88,7 +112,7 @@ decl_module! {
             let registry_id = <Self as VerifierRegistry>::create_registry(&info)?;
 
             // Emit event
-            // ...
+            Self::deposit_event(Event::<T>::RegistryCreated(registry_id));
 
             Ok(())
         }
@@ -198,16 +222,15 @@ impl<T: Trait> VerifierRegistry for Module<T> {
         /*** Tmp replacement for tests: ***/
         let doc_root = Self::get_document_root(mint_info.anchor_id)?;
 
-        // Verify the proof against document root
-        // TODO: Once integrated w/ cent chain
-        //Self::validate_proofs(&doc_root, &proofs, &static_proofs)?;
-
         // Generate leaf hashes of each value for proof
         let leaves = fields.into_iter()
             .zip(values)
             .map(|(field, val)|
                 Self::leaf_hash(field, val));
 
+        // Verify the proof against document root
+        // TODO: Once integrated w/ cent chain
+        //Self::validate_proofs(&doc_root, &proofs, &static_proofs)?;
 
         // -------
         // Minting
