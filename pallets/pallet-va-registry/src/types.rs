@@ -15,16 +15,22 @@ pub type AssetId<T> = pallet_nft::CommodityId<T>;
 // Metadata for a registry instance
 #[derive(Encode, Decode, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "std", derive(Debug))]
+/// Metadata for an instance of a registry.
 pub struct RegistryInfo {
+    /// A configuration option that will enable a user to burn their own tokens
+    /// in the [burn] method.
     pub owner_can_burn: bool,
+    /// Names of fields required to be provided for verification during a [mint].
+    /// These *MUST* be compact encoded.
     pub fields: Vec<bytes>,
 }
 
-/// Contains all data about an instance of an NFT.
+/// All data for an instance of an NFT.
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct AssetInfo {
     pub registry_id: RegistryId,
+    // TODO: Other generic fields ..
 }
 
 // Registry id must be a field within the data, because an assets id
@@ -36,12 +42,17 @@ impl InRegistry for AssetInfo {
     }
 }
 
-/// Info needed to provide proofs to mint
+/// Data needed to provide proofs during a mint.
 #[derive(Encode, Decode, Clone, PartialEq, Default)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct MintInfo<Hash> {
+    /// Unique ID to an anchor document.
     pub anchor_id: Hash,
+    /// Proofs should match to corresponding values. A value-leaf-hash
+    /// merkelized with its proof will be the root hash of the anchor
+    /// document when valid.
     pub proofs: Vec<Proof>,
+    /// Values correspond with fields specified by a registry.
     pub values: Vec<bytes>,
 }
 

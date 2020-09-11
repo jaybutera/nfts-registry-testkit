@@ -71,12 +71,15 @@ decl_event!(
     pub enum Event<T>
     where
         CommodityId = AssetId<T>,
+        AccountId   = <T as frame_system::Trait>::AccountId,
     {
         /// Successful mint of an NFT from fn [`mint`](struct.Module.html#method.mint)
         Mint(CommodityId),
         /// Successful creation of a registry from fn
         /// [`create_registry`](./struct.Module.html#method.create_registry)
         RegistryCreated(RegistryId),
+        /// Ownership of the commodity has been transferred to the account.
+        Transferred(CommodityId, AccountId),
     }
 );
 
@@ -89,6 +92,8 @@ decl_error! {
         /// The values vector provided to a mint call doesn't match the length of the specified
         /// registry's fields vector.
         InvalidMintingValues,
+        // Thrown when someone who is not the owner of a commodity attempts to transfer or burn it.
+        NotCommodityOwner,
     }
 }
 
@@ -133,6 +138,26 @@ decl_module! {
             // Mint event
             Self::deposit_event(RawEvent::Mint(commodity_id));
 
+            Ok(())
+       }
+
+        /// Transfer a commodity to a new owner.
+        ///
+        /// The dispatch origin for this call must be the commodity owner.
+        ///
+        /// This function will throw an error if the new owner already owns the maximum
+        /// number of this type of commodity.
+        ///
+        /// - `dest_account`: Receiver of the commodity.
+        /// - `commodity_id`: The hash (calculated by the runtime system's hashing algorithm)
+        ///   of the info that defines the commodity to destroy.
+        #[weight = 10_000]
+        pub fn transfer(origin, dest_account: T::AccountId, commodity_id: AssetId<T>) -> dispatch::DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(who == <pallet_nft::Module<T>>::account_for_commodity(&commodity_id), Error::<T>::NotCommodityOwner);
+
+            <pallet_nft::Module<T> as Unique>::transfer(&dest_account, &commodity_id)?;
+            Self::deposit_event(RawEvent::Transferred(commodity_id.clone(), dest_account.clone()));
             Ok(())
         }
     }
