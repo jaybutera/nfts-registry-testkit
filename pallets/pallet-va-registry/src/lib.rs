@@ -10,7 +10,7 @@
 //! of data field names from the fields attribute of the [RegistryInfo]
 //! struct. Values for the fields are provided upon each call to
 //! [mint](struct.Module.html#method.mint) a new NFT. As can be seen in
-//! the values field of the [MintoInfo] struct. MintInfo also takes a
+//! the values field of the [MintInfo] struct. MintInfo also takes a
 //! list of proofs and an anchor id. The mint method will hash the
 //! values into leaves of a merkle tree and aggregate with the proofs
 //! to generate the root. When the root hash matches that of the anchor,

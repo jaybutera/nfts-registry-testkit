@@ -251,8 +251,10 @@ impl<T: Trait<I>, I: Instance>
 
 
 impl<T: Trait<I>, I: Instance>
-    Burnable<Commodity<CommodityId<T>, <T as Trait<I>>::CommodityInfo>> for Module<T, I>
+    Burnable for Module<T, I>
 {
+    type Asset = Commodity<CommodityId<T>, <T as Trait<I>>::CommodityInfo>;
+
     fn burned() -> u128 {
         Self::burned()
     }
