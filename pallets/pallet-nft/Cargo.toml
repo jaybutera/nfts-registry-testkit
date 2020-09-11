@@ -11,7 +11,7 @@ serde = { version = "1.0.101", optional = true }
 
 [dependencies.unique_assets]
 default-features = false
-path = "../../../unique_assets"
+git = "https://github.com/jaybutera/unique-assets"
 
 
 [dependencies.codec]

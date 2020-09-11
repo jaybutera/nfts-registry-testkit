@@ -17,7 +17,7 @@ path = "../pallet-nft"
 
 [dependencies.unique_assets]
 default-features = false
-path = "../../../unique_assets"
+git = "https://github.com/jaybutera/unique-assets"
 
 [dependencies.codec]
 default-features = false
